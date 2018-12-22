@@ -1,16 +1,16 @@
 # Cutters and Filters
 
-This document indrodue the various classes used for slicing proteins. 
-Read this document in if you want to understand how to implement additional class (in order to add to pdb slicer other method of slicing and filtering).
-After implementing your Cutter or Filter do th following in ```pdbslicer.py```:
-* Change the ```help()``` function in 
+This document introdues the various classes used for slicing proteins. 
+See blow instractions to in order to add new methods of slicing and filtering.
+After implementing your Cutter or Filter do the following in ```pdbslicer.py```:
+* Change the ```help()``` function
 * Insert the name of the class in the global variable ```$cutters_classes```
 
 ## Cutters
-Cutters are classes which alow us to slice a protoein data structure (model) into slices.
-for example: Use  the ```ByAmino``` cutter to insert model and to get a list (Cut) of it amno acids data structure.
-each item in this data structure is a list atoms which represents one amino acid.
-an atom is represented by q hash referaces of the record componanats of atom line from the pdb file.
+Cutters are classes which allow us to slice a protein data structure (model) into slices.
+For example: Use  the ```ByAmino``` cutter to insert model and to get a list (Cut) of its amino acids data structure.
+Each item in this data structure is a list of atoms which represents one amino acid.
+An atom is represented by a hash references of the record components of atom line from the PDB file.
 
 ### Cut.pm
 This is the parent class of each Cut sub class
@@ -27,7 +27,7 @@ Implements the following methods:
 
 ### Implemented Cutters
 
-we have already implemented this cutters:
+We have already implemented the following cutters:
 * ByAtomsFile.pm
 * ByAmino.pm
 * ByAmino_N_CA_C_O.pm
@@ -44,7 +44,7 @@ Implements the following methods:
 TODO
  
 ### Implemented Filter
-We implented the folllowing classes of filters:
+We implemented the following classes of filters:
 * Filter/Aminos.pm
 * Filter/RelativeResseq.pm
 * Filter/PreProline_Other.pm
