@@ -51,7 +51,8 @@ The file must have 20 lines - one for each amino acid.
 The line structure is "residue name" then ':' and the chosen atoms  seperated by comma.
 If no atoms are chosen then after the ':' will come the string 'NONE'
 Here is an example of such a file:
-```ini file
+```
+
 Ala:  N,CA,C,O,CB
 Arg:  ALL ATOMS
 Asn:  N,CA,C,O,CB
@@ -72,6 +73,7 @@ Thr:  N,CA,C,O,CB
 Trp:  N,CA,C,O,CB
 Tyr:  N,CA,C,O,CB
 Val:  N,CA,C,O,CB
+
 ```
 
 # output files
@@ -93,6 +95,6 @@ protein is a list of  peptides
     atom has properties such as: X, Y, Z, name, resname, resseq  ...
 
 ```
-
+[Read here to learn how](./src/OpSym/Cut/readme.md)
 
 
