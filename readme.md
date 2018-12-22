@@ -10,6 +10,10 @@ Several subunits are defined:
 
 Please see below how to create new types of subunits.
 
+## Publications
+1. Y. Baruch-Shpigler, H. Wang, I. Tuvi-Arad and D. Avnir, [Chiral Ramachandran plots I: Glycine, Biochemistry](http://pubs.acs.org/doi/abs/10.1021/acs.biochem.7b00525), 56, 5635-5643 (2017).
+2. H. Wang, D. Avnir and I. Tuvi-Arad, [Chiral Ramachandran Plots II: General trends and proteins chirality spectra, Biochemistry](https://pubs.acs.org/doi/10.1021/acs.biochem.8b00974) ([in press, DOI: 10.1021/acs.biochem.8b00974](https://pubs.acs.org/doi/10.1021/acs.biochem.8b00974)).  
+
 ## How to use the software
 ``` perl
 pdbslicer -
