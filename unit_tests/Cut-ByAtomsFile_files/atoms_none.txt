@@ -1,0 +1,21 @@
+Ala: NONE
+Arg: NONE
+Asn: NONE
+Asp: NONE
+Cys: NONE
+Glu: NONE
+Gln: NONE
+Gly: NONE
+His: NONE
+Ile: NONE
+Leu: NONE
+Lys: NONE
+Met: NONE
+Phe: NONE
+Pro: NONE
+Ser: NONE
+Thr: NONE
+Trp: NONE
+Tyr: NONE
+Val: N,CA,C,O,CB
+

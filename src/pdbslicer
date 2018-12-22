@@ -1,0 +1,646 @@
+#!/opt/lperl/bin/perl        
+#=========================================================================================================================
+#
+#         FILE:  pdbsliecer
+#
+#        USAGE:  ./pdbsliecer
+#
+#  DESCRIPTION:  This program parse a multi pdb files using the PDBSlicer
+#              
+#                then the progrem can do one of the folowing:
+#                
+#			create output_multy sub dir
+#			create tmp.csm file
+#		output_multy :
+#		------------
+#			* cmd_string.txt 			- the conmmand as type by the user
+#
+#      OPTIONS:  changing all the time ... just try ./xxx -h to get this info
+# REQUIREMENTS:  ---
+#         BUGS:  ---
+#        NOTES:  ---
+#       AUTHOR:   (Sagiv Barhoom), <sagivba@gmail.com>
+#      COMPANY:  The Open University of Israel
+#      CREATED:  23/11/2014 21:48:51 PM IDT
+#     REVISION:  
+#=====================================================================================================================
+
+use strict;
+use warnings;
+
+
+ 
+BEGIN
+{	
+	unless ($ENV{MYSYM_SRC}){
+		print "Missing \$MYSYM_SRC - the path of OpSym::* modules.\n\n";
+		exit;
+	}
+
+	#push @INC,'/home/shared/mysym/prod/src';
+	push @INC,$ENV{MYSYM_SRC};
+}
+use warnings;
+use strict;
+use OpSym::Conf;
+use OpSym::Sorter;
+use OpSym::AtomsNumbers;
+use OpSym::RangeOfNumbers;
+use OpSym::CmdString;
+use OpSym::PDBslicer;
+use OpSym::AminoAcid;;
+use OpSym::Cut::ByAmino;
+use OpSym::Cut::ByAmino_N_CA_C_O;
+use OpSym::Cut::ByRamachandran;
+use OpSym::Cut::ByRamachandran_with_side_chain;
+use OpSym::Cut::ByRamachandran_with_side_chain_no_oxygen;
+use OpSym::Cut::ByAtomsFile;
+use OpSym::Cut::Filter::Aminos;
+use OpSym::Cut::Filter::Resseq;
+use OpSym::Cut::Filter::RelativeResseq;
+use OpSym::Cut::Filter::PreProline_General;
+use Text::Table;
+use Data::Dumper;
+use Data::Pivot;
+use Getopt::Std;
+use File::Slurp;
+use File::Copy;
+use File::Basename;
+use filetest q{access};
+#---------------------------------------------------------------------------
+#  Constants
+#---------------------------------------------------------------------------
+
+
+
+my $csm_bin_dir	=${OpSym::Conf::Csm_dir};
+my $shape_dir	=${OpSym::Conf::Shape_dir};
+my @valid_cmds		= () ;
+
+my $Version            = "0.9.5.3";	
+my $TIME               = time;
+my $csm_key_tmpl       = "m%03d_p%03d_a%07d";
+my $cutters_classes    = {
+	1=>'OpSym::Cut::ByAmino',
+	2=>'OpSym::Cut::ByRamachandran',
+	3=>'OpSym::Cut::ByAtomsFile',
+	4=>'OpSym::Cut::ByAmino_N_CA_C_O',
+	5=>'OpSym::Cut::ByRamachandran_with_side_chain',
+	6=>'OpSym::Cut::ByRamachandran_with_side_chain_no_oxygen',
+
+};                                                          
+
+my $P=$0;
+my $distances_file	;
+
+my $out_dir;
+#---------------------------------------------------------------------------
+#  vriables (globals)
+#---------------------------------------------------------------------------
+my $dbg                 = 0;
+my $chunks_size         = 100;
+my $is_verbose          = undef;
+my $pdb_file            = "";
+my $cut_filter_pattern	= undef;
+my %options             = ();
+my ($cutting_method,$cutter);
+my ($input_dir,$output_dir,@aminos_range);
+my ( $cmd_string_file,@models_range);
+my ($g_pdb_file);
+my ($tmp_pdb_file_name_tmpl);
+my (@cmds,$cmds_codes,@atoms_numbers,@resseq_numbers,$filters);
+my ($create_mol_numbers,$do_pivot,$pivot_file);
+my $atoms_file;
+my $status;
+my $program_name=basename($0);
+#---------------------------------------------------------------------------
+#  functions
+#---------------------------------------------------------------------------
+
+sub dbg {print @_ if $dbg==1}
+sub help {	
+#===  FUNCTION  ================================================================
+#         NAME: help 
+#      PURPOSE:  print help (and error msg)
+#===============================================================================
+	my $msg	= shift || undef;
+	if ($msg){
+		print qq{
+Version: $Version
+Usage:
+	$program_name  [-o OUTPUT_FILE] [-v ][ -R RANGE ] [-O output_dir]  [-M RESNAME] [-C CUTTING METHOD] [-P FILTER] [-A RANGE]
+	$program_name -h
+};
+
+		print "use '$program_name -h' to get the help message'\n";
+		die qq{\n	Error: '$msg'\n	};
+	}
+		
+	print qq{
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+$program_name - 
+	Cut a protein pdb file into subunits.
+Version: $Version
+Usage:
+	$program_name  [-o OUTPUT_FILE] [-v ][ -R RANGE ] [-O output_dir]  [-M RESNAME] [-C CUTTING METHOD] [-P FILTER] [-A RANGE]
+	$program_name -h
+
+Parameters:
+	-h	Get this help
+	-i      Input pdb file     [default is input.pdb]
+	-O      Output directory name
+	-C      Cutting method: 
+			1=cut by amino acid, 
+			2=cut by Ramachandran backbone 
+			3=cut with external 'atoms.txt' file. Requires  the -a option.
+			4=cut by amino acid backbone N|CA|C|O atoms
+			5=cut by Ramachandran with side chain 
+			6=cut by Ramachandran with side chain no oxygen 
+       	-a	Cut specific atoms of each amino acid. An atoms.txt file should be specified.
+	-R	Model range (1-10,12,14)
+	-M r	Filter by residue name (example: -M GLY)
+	-P 	Filter PreProline and Other. Valid values for this parmaeter: 
+			'GENERAL', 'PRE_PRO', 'GLY', 'PRO' or any combination such as 'GENERAL|PRE_PRO'
+	-A a-b	Filter by residue sequance number (example: -A 2-8)
+	-J      Don't add time signature to the output directory
+	-G a-b  Create a new PDB file with amino acids a-b. The new  file name: old.a-b.pdb
+	-L      Number of subunits in the outputfiles default is  100
+	-v	Verbose output
+};
+
+print qq{
+Ramachandran backbone for amino acid #i contains the atoms: C(i-1), N(i), CA(i), C(i), N(i+1).
+
+Cutting with atoms.txt file:
+Each line of the "atoms.txt" represents one amino acid.
+The file must have 20 lines - one for each amino acid.
+The line structure is "residue name" then ':' and the chosen atoms seperated by comma.
+If no atoms are chosen then after the ':' will come the string 'NONE'
+Here is an example of such a file:
+-------------------------
+Ala:  N,CA,C,O,CB
+Arg:  ALL ATOMS
+Asn:  N,CA,C,O,CB
+Asp:  N,CA,C,O,CB
+Cys:  N,CA,C,O,CB
+Glu:  N,CA,C,O,CB
+Gln:  N,CA,C,O,CB
+Gly:  N,CA,C,O
+His:  N,CA,C,O,CB
+Ile:  N,CA,C,O,CB
+Leu:  N,CA,C,O,CB
+Lys:  N,CA,C,O,CB
+Met:  N,CA,C,O,CB
+Phe:  N,CA,C,O,CB
+Pro:  N,CA,C,O,CB
+Ser:  N,CA,C,O,CB
+Thr:  N,CA,C,O,CB
+Trp:  N,CA,C,O,CB
+Tyr:  N,CA,C,O,CB
+Val:  N,CA,C,O,CB
+-------------------------
+
+The output is in the directory "out_\{PDB_NAME\}\{timestring\}"
+This directory contains:
+
+       * cmd_string.txt            - the command as typed by the user
+       * output files              - files names are indexed by serial-number + model + peptide-name	 
+
+} unless $msg;
+	exit ($msg?1:0);
+}	# ----------  end of subroutine help  ----------
+
+
+sub verbose {
+#===  FUNCTION  ================================================================
+#         NAME: verbose 
+#      PURPOSE:  print verbose msgs
+#===============================================================================	
+	print @_,"\n" if $is_verbose;
+	return ;
+}	# ----------  end of subroutine verbose  ----------
+
+
+sub validate_models_range {
+	my $parser = shift;
+	verbose __LINE__ , " validate_models_range";
+	for my $model_index (@models_range){
+		help(__LINE__." missing molecule number $model_index.") 
+			unless $parser->get_molecules_by_index($model_index); 
+		verbose __LINE__ , " 		validate_models_range:$model_index is OK";
+	}
+	
+}	# ----------  end of subroutine validate_models_range  ----------
+
+sub do_getopt {
+#===  FUNCTION  ================================================================
+#         NAME: do_getopt 
+#      PURPOSE: get the options and set global parameters
+#===============================================================================	
+	my $cmd_string=OpSym::CmdString->get_file_lines("",$0,@ARGV);
+
+	my $options_string="vhJi:o:O:C:a:R:M:P:A:G:L:";
+	getopts($options_string,\%options);
+	help()			if 		defined $options{h};
+	$is_verbose	='true'	if 		defined $options{v};
+	$chunks_size    = int($options{L}) if 	defined $options{L};
+	help " value for the 'L' option must be positive integer. " unless $chunks_size;
+
+	#------------------------
+	# validating input dir
+	#------------------------
+	$input_dir	= '.';
+	verbose __LINE__." input directory:'$input_dir'";
+
+	#------------------------
+	# input file
+	#------------------------
+	$pdb_file	= $options{i} || "input.pdb" ;
+	$pdb_file	= "$input_dir/$pdb_file";
+	help(__LINE__." missing '$pdb_file'")	unless	-r $pdb_file;
+	verbose (__LINE__," pdb_file    :'$pdb_file'");	
+
+	#------------------------
+	# cutting method
+	#------------------------
+	$cutting_method	= $options{C};
+	unless ($cutters_classes->{$cutting_method} ){
+		help (__LINE__." Cutting method should be one of:".join(", ", sort keys (%$cutters_classes)) );
+	}
+	if ( $cutters_classes->{$cutting_method} eq 'OpSym::Cut::ByAtomsFile'){
+		$atoms_file = $options{a} ? $options{a} : 'atoms.txt';
+		help (__LINE__." missing atoms file. Did you forget option -a ?") unless ( -f $atoms_file);
+		print "$cutters_classes->{$cutting_method}==>atoms_file=$atoms_file\n";
+			
+	}
+	elsif ( $cutters_classes->{$cutting_method} ne 'OpSym::Cut::ByAtomsFile' and defined $options{a} ){
+		help (__LINE__." the option '-a' is allowd only with -C 3 (Cut By Atoms File)");
+	}
+
+
+	#
+	# creating  outputs names
+	#------------------------
+
+        if ($options{O}){
+		$output_dir= "$input_dir/$options{O}". ( defined $options{J} ? "" : time() );
+	}
+	else{
+		my $tmp=$options{i};
+		$tmp=~s/.pdb//i;
+		$output_dir= "$input_dir/out_$tmp".    ( defined $options{J} ? "" : time() );
+	}
+	verbose __LINE__." output directory  :'$output_dir'";
+        if ($options{S}){
+		$pivot_file =  "$output_dir/pivot.txt";
+		$do_pivot=1
+	}
+
+	$cmd_string_file	                = "$output_dir/cmd_string.txt";
+	$tmp_pdb_file_name_tmpl			= "$output_dir/tmp_dir/${csm_key_tmpl}.pdb";
+
+	mkdir "$output_dir"		|| die "could not mkdir '$output_dir' $!";
+	mkdir "$output_dir/tmp_dir" 	|| die "could not mkdir '$output_dir/tmp_dir' $!";
+	write_file ("$cmd_string_file","$cmd_string");
+	$filters=[];
+	if ($options{A}){
+		help ("Option -A represent sequance. Example: 3-9") unless ($options{A}=~/^(\d+)([-]\d+)?$/);
+		my $numbers = OpSym::RangeOfNumbers->new();
+		$numbers->parse_numbers_string($options{A});
+		help ( $numbers->get_status() ) unless $numbers->get_status()=~/OK/;
+		@resseq_numbers    = @{$numbers->get_range_of_numbers()};
+		push @$filters,OpSym::Cut::Filter::Resseq->new(\@resseq_numbers);
+	}
+
+	if ($options{M}){
+		$cut_filter_pattern = uc $options{M};
+		help ( "resname: '$cut_filter_pattern' for cut filter (parameter '-M') is not valid"  )
+				 unless OpSym::AminoAcid->is_valid_resname($cut_filter_pattern);
+		push @$filters,OpSym::Cut::Filter::Aminos->new($cut_filter_pattern);
+	}
+	if ($options{P} ){
+		sub validate_p {
+			my @p=split '\|',$options{P};
+			for my $i  (@p){
+				return undef if $i!~/^(PRE_PRO|GENERAL|GLY|PRO)$/;
+			}
+			return 1;
+		}
+		help ( "'$options{P}' is not a valid value, try $0 -h  to learn more"  )
+			unless validate_p();
+
+		push @$filters,OpSym::Cut::Filter::PreProline_General->new($options{P});
+	}
+
+
+
+
+	if ($options{R}){
+		# I use here OpSym::AtomsNumbers to get the range of the models 
+		my $models_ranger = OpSym::AtomsNumbers->new();
+		$models_ranger->parse_numbers_string($options{R});
+		help ( $models_ranger->get_status() ) unless $models_ranger->get_status()=~/OK/;
+		@models_range=@{$models_ranger->get_atoms_numbers()};
+	}
+
+	if ($options{G}){
+		help ("Option -G represent sequance. Example: 3-9") unless ($options{G}=~/^(\d+)([-]\d+)?$/);
+		my $aminos_range = OpSym::RangeOfNumbers->new();
+		$aminos_range->parse_numbers_string($options{G});
+		help ( $aminos_range->get_status() ) unless $aminos_range->get_status()=~/OK/;
+		@aminos_range=@{$aminos_range->get_range_of_numbers()};
+		my $first=sprintf "%04d", $aminos_range[0];
+		my $last=sprintf "%04d", $aminos_range[-1];
+		$g_pdb_file = "$pdb_file";
+		$g_pdb_file =~s!.*/!!;
+		$g_pdb_file =~s/.pdb$/.$first-$last.pdb/i;
+		$g_pdb_file = "$output_dir/$g_pdb_file";
+		verbose __LINE__." -G option: new pdb file:'$g_pdb_file'";
+	}
+
+
+
+	$create_mol_numbers='true';# remarked due to inbals reqeust if ($options{n});	
+
+}	# ----------  end of subroutine do_getopt  ----------
+
+sub create_g_file {
+	my $parser = shift;
+	my $model=$parser->get_next_model();
+	my $g_filters = [OpSym::Cut::Filter::Resseq->new(\@aminos_range)];
+	my $peptides_list =[];
+	$peptides_list=['ZERO_PEPTIDE_NOT_EXISTS'];
+	for my $pep_i (1..$parser->get_number_of_peptides($model)){
+	        my $pre_peptide   = $parser->get_peptide_by_number($model,$pep_i);
+		my $g_cutter = OpSym::Cut::ByAmino->new($pre_peptide,$g_filters);
+		my $amino_list = $g_cutter->cut();
+		my $cut_peptide= ['ZERO_ATOM_NOT_EXISTS'];
+		for my $atom_list (@$amino_list){
+			push @$cut_peptide,@$atom_list;
+		}
+
+		push @$peptides_list,$cut_peptide;
+	}
+	verbose __LINE__." creating g_pdb_file: $g_pdb_file";
+	write_file $g_pdb_file,$parser->peptides_list2pdb($peptides_list);
+	
+	my $g_parser = OpSym::PDBslicer->new($g_pdb_file);
+	help (__LINE__. " parsing '$pdb_file' failed. please check the file content") 
+			unless $parser and $parser->get_status=~/OK/;
+        print `date`."parsinge '$g_pdb_file'...";
+	my $g_status=$g_parser->parse_file();
+	help (__LINE__. " parsing '$g_pdb_file' failed. please check the file content: $g_status") 
+		unless $g_status=~/OK/;
+	verbose __LINE__." $g_status";
+	print "finish parsing $g_pdb_file\n";
+	return $g_parser;
+	
+
+}	# ----------  end of subroutine create_g_file  ----------
+
+
+sub create_chunked_file{
+	my ($file_index,$files_list) = (shift,shift);
+	my ($parser, $model, $peptide, @bsnm_partsr);
+	dbg "\n\n --- create_chunked_file  $file_index---\n";
+	dbg "file_index=$file_index,file list:";
+	dbg $files_list->[0];
+	dbg $files_list->[-1];
+	# set out file name (module number and peptide name
+	dbg "OpSym::PDBslicer->new($files_list->[0],'OFF')\n";
+	$parser    = OpSym::PDBslicer->new($files_list->[0],'OFF');
+	$parser->parse_file();
+	$model     = $parser->get_model_by_number(1);
+	$peptide   = $parser->get_peptide_by_number($model, 1);
+	@bsnm_partsr = split ("_",basename ($files_list->[0],".pdb")); # [ m001 p001 a0000040 ]
+	my $first_model_number = shift @bsnm_partsr; # m001
+	my $first_peptide_name = $parser->get_peptide_chain_id($peptide,1); 
+
+	dbg "OpSym::PDBslicer->new($files_list->[-1],'OFF')\n";
+	$parser    = OpSym::PDBslicer->new($files_list->[-1],'OFF');
+	$parser->parse_file();
+	$model     = $parser->get_model_by_number(-1);
+	$peptide   = $parser->get_peptide_by_number($model,-1);
+	my $last_peptide_name = $parser->get_peptide_chain_id($peptide,scalar (@$peptide)); 
+	@bsnm_partsr = split ("_",basename ($files_list->[0],".pdb")); # [ m001 p001 a0000040 ]
+	my $last_model_number = shift @bsnm_partsr; # m001
+
+	my $chunkd_fn="$output_dir/$file_index.$first_model_number.$first_peptide_name-$last_model_number.$last_peptide_name.pdb";
+
+
+	my @file_lines;
+	#create file name(first and last model numbers and first and last peptides
+	my $indexed_model_number=1;
+	for my $fn (@$files_list){
+		# fn=./out_1UBQ1544263651/tmp_dir/m001_p001_a0000040.pdb
+		
+		my @bsnm_partsr = split ("_",basename ($fn,".pdb")); # [ m001 p001 a0000040 ]
+		my $model_number = shift @bsnm_partsr; # m001
+		$model_number=~s/^m//;
+		my @tmp_lines= read_file($fn);
+		shift   @tmp_lines;# remove MODEL 1
+	        unshift @tmp_lines,sprintf("MODEL %5d\n",$indexed_model_number);
+		$indexed_model_number++;
+		pop @tmp_lines;  # remove END line
+		push @file_lines,@tmp_lines;
+	}
+		
+	push @file_lines,"END\n";
+	write_file $chunkd_fn,@file_lines;
+
+}	# ----------  end of subroutine create_chunked_file  ----------
+
+
+	
+
+
+
+
+main:{
+
+	$|=1;
+	$P=~s/.*\///g;
+	do_getopt();
+	print "+------------------------------------------------------------------\n";
+	print "| $P \n";
+	print "| Version     : $Version\n";
+	print "| input_dir   : $input_dir\n";
+	print "| output_dir  : $output_dir\n";
+	print "+------------------------------------------------------------------\n";
+
+
+	verbose __LINE__." commands template is :".Dumper(\@cmds);
+	verbose "------------------------------";
+	verbose "processing '$pdb_file'"; 
+	verbose "------------------------------";
+
+        
+        #-------------------------
+        # creating parser
+        #-------------------------
+        print `date`."parsinge '$pdb_file'...";
+	my $parser = OpSym::PDBslicer->new($pdb_file);
+	help (__LINE__. " parsing '$pdb_file' failed. please check the file content") 
+			unless $parser and $parser->get_status=~/OK/;
+	$status=$parser->parse_file();
+	help (__LINE__. " parsing '$pdb_file' failed. please check the file content: $status") 
+		unless $status=~/OK/;
+	verbose __LINE__." $status";
+	print "finish parsing $pdb_file\n";
+	print $parser->gaps_report_text() if $parser->pdb_stracture_has_gaps();
+
+	if ($options{G}){
+		# create g_pdb_file that contain only the desired amino acid sequence,
+		# then parse it and replace the parser with this new g_parser
+		$parser=create_g_file($parser);
+	}
+	my $is_single_modle= 1 if $status eq 'PARSE_FILE_OK-SINGLE_PEPTIDE_OR_OLIGOMER';
+
+        #-------------------------
+        # setting model range
+        #-------------------------
+
+        print `date`."setting model range...";
+	#my $nom = ($is_single_modle == 1 ? 1 : $parser->get_number_of_models());
+	my $nom =  $parser->get_number_of_models();
+	verbose __LINE__." number of models is $nom";
+	if  ( $is_single_modle or  not @models_range){
+		$status=$parser->get_status();
+		help (__LINE__." Number of models in file: '$pdb_file' is not valid: $status" ) unless $status=~/OK/;		
+		# I use here OpSym::AtomsNumbers to get the range of the models 
+		my $models_ranger = OpSym::AtomsNumbers->new();
+		verbose __LINE__." range:1-$nom";
+		$models_ranger->parse_numbers_string("1-$nom");
+		help (__LINE__." Problem with model range: ". $models_ranger->get_status() ) 
+			unless $models_ranger->get_status()=~/OK/;
+		@models_range=@{$models_ranger->get_atoms_numbers()};
+	}
+  	
+	my @_sorted_models_range = sort {$b <=> $a} @models_range;
+	my $bigest            = $_sorted_models_range[0];
+	help (__LINE__." Model rage has an element too big: $bigest (number of models in the file is: $nom)") 
+		if ($bigest > $nom);
+	verbose __LINE__." models range is: ".join (", ",@models_range)." total number of models is: $nom" ;
+	print "finish setting model range\n";
+	my $cutter_class=$cutters_classes->{$cutting_method};
+	my $csm_data	={};
+	my $data	=[];
+	my $errors	="";
+	my @directional_cosinuses = (sprintf ('%10s %10s %15s%8s %10s %10s %10s'."\n",
+					'MDL_INDX','PPTD_INDX','ATMS_LST_INDX','CMD','X','Y','Z'));
+	my (@initial_structure,@resulting_structure,@permutations);
+	
+        #-------------------------------
+        # processing models one by one
+        #------------------------------
+	my $index=0;
+	for my $model_index ( @models_range ){
+				
+	        #----------------------------------
+        	# setting data of current model
+        	#----------------------------------
+	
+		my $model     = $parser->get_model_by_number($model_index);
+		$status       = $parser->get_status;
+		my $reset_atom_index = 'RESET_ATOM_INDEX';
+		help (__LINE__." Could not get model by number model_index:$model_index status:$status") 
+				unless $status=~/OK/;
+
+		my $nop       = $parser->get_number_of_peptides($model);
+		$status       = $parser->get_status;
+		help (__LINE__." Could not get number of  paptides in  model_index:$model_index status:$status") 
+				unless $status=~/OK/;
+
+	        #----------------------------------
+        	# processing peptides in the model
+        	#----------------------------------
+		for my $peptide_index ( 1..$nop ){
+			verbose  "+---------------------------------------------------";
+                        verbose  "| model= $model_index peptide_index=$peptide_index";
+			verbose  "+---------------------------------------------------";
+
+			my $peptide    = $parser->get_peptide_by_number($model,$peptide_index);
+			$status        = $parser->get_status;
+			help (__LINE__." Could not get  peptide $peptide_index in  model number:$model_index status:$status") 
+				unless $status=~/OK/;
+
+			my $cutter     = $cutter_class->new($peptide,$filters);	
+			$status        = $cutter->get_status;
+			help (__LINE__." Cutter status is $status. peptide number:$peptide_index ".
+				       " model number:$model_index") 	unless $status=~/OK/;
+			if (ref($cutter) eq 'OpSym::Cut::ByAtomsFile'){
+				$cutter->parse_atoms_file($atoms_file);
+				$status        = $cutter->get_status;
+				help (__LINE__." Cutter status is $status. peptide number:$peptide_index".
+					       " model number:$model_index") unless $status=~/OK/;
+			}
+			my $cutting_list = $cutter->cut();
+			$status        = $cutter->get_status;
+			help (__LINE__." Cutter status is $status. peptide number:$peptide_index ".
+				       " model number:$model_index") unless $status=~/OK/;
+			
+	        	#---------------------------------------
+	        	# for each cut create tmp_file
+	        	#---------------------------------------
+	        	my $atoms_list_index=0;
+			for my $atoms_list (@$cutting_list) {
+				my $tmp_pdb_file_name    = sprintf "$tmp_pdb_file_name_tmpl",
+				                                   $model_index,
+								   $peptide_index,
+								   $atoms_list_index;
+				my $pdb_txt              = $parser->atoms_list2pdb($atoms_list,"$model_index",undef,$reset_atom_index);
+				$status                  = $parser->get_status;
+				$reset_atom_index = 'FALSE';
+				verbose "tmp_pdb_file_name=$tmp_pdb_file_name";
+				verbose "atoms_list_index =$atoms_list_index status=$status";
+				verbose "---->\n$pdb_txt<----\n - - -\n";
+				help (__LINE__." Non valid atom list:$status. ".
+                                               "paptide number:$peptide_index  model number:$model_index".
+					       Dumper $atoms_list) unless $status=~/OK/;
+
+				write_file $tmp_pdb_file_name,"$pdb_txt" ;
+				my $curr_amino_acid        = $parser->which_resname($atoms_list);
+				my $curr_amino_acid_serial = $parser->which_resseq($atoms_list);
+				$index++;
+				$atoms_list_index++;
+			}
+			verbose __LINE__." model_index=$model_index peptide_index=$peptide_index atoms_list_index=$atoms_list_index $status";
+		}  # --- end for each peptide
+	}  # --- end for each model
+	print "\n\n";
+
+	# create output files of chunks
+	my @files =sort ( glob( "$output_dir/tmp_dir/*"));
+	my $chunks_files=[];   # list of list of files names
+	my $curr_chunk=[];
+	my $ i=0;
+	for my $fn (@files){
+		$curr_chunk->[$i]=$fn;
+		$i++;
+		if ($i % $chunks_size ==0){
+			push @$chunks_files,$curr_chunk;
+			$curr_chunk=[];
+			$i=0;
+		}
+	}
+	push (@$chunks_files,$curr_chunk) if (defined $curr_chunk->[0]);
+	my $file_index=1;
+	for my $fc (@$chunks_files){
+		create_chunked_file(sprintf("%03d",$file_index),$fc) ;
+		$file_index++;
+
+	}
+
+	if (not $dbg ){
+		system "rm -fr $output_dir/tmp_dir" ;
+	}
+	print  "- - - - - - - - - - - - - - - - - - -\n".
+	       " output_dir\n$output_dir\n".`ls -l $output_dir/* |grep -vP 'mol_no'`;
+
+	print "procesesd ".scalar(@models_range)." molecules.\n";
+	print  "-  -  -  -  -  -  -\n errors:\n$errors\n" if $errors;
+	
+}
+__END__
+

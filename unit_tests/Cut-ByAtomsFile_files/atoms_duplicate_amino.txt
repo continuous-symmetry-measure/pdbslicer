@@ -1,0 +1,24 @@
+#This is atoms file for OpSym::Cut::ByAtomsFile test.
+# lines which begin with # char are comments lines
+# The file mast contain 20 amino acids (lines)
+#
+Ala:N,CA,C,O,CB
+Ala:N,CA,C,CB   # this is duplicated line Error
+Asn:  N,CA,C,O,CB
+Asp:  N,CA,C,O,CB
+Cys:  N,CA,C,O,CB
+Glu:  N,CA,C,O,CB
+Gln:  N,CA,C,O,CB
+Gly:N,  CA  ,C  ,	O
+His:  N,CA,C,O,CB
+Ile:  N,CA,C,O,CB
+Leu:  N,CA,C,O,CB
+Lys:  N,CA,C,O,CB
+Met:  N,CA,C,O,CB
+Phe:  N,CA,C,O,CB
+Pro:  N,CA,C,O,CB
+Ser:  N,CA,C,O,CB
+Thr:  N,CA,C,O,CB
+Trp:  N,CA,C,O,CB
+Tyr:  N,CA,C,O,CB
+Val:  N,CA,C,O,CB
