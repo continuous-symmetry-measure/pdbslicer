@@ -11,7 +11,31 @@ Cutters are classes which allow us to slice a protein data structure (model) int
 For example: Use  the ```ByAmino``` cutter to insert model and to get a list (Cut) of its amino acids data structure.
 Each item in this data structure is a list of atoms which represents one amino acid.
 An atom is represented by a hash references of the record components of atom line from the PDB file.
+```perl
+$line= 'ATOM    149  CD1ALEU A  18     -24.795  15.010  15.993  0.50 10.41           C';
+$atom_record = $parser->_parse_atom($line);
+# Will results:
+ {
+        'record_name' => 'ATOM',
+        'chain_id' => 'A',
+        'atom_serial_number' => '149',
+        'atom_name' => 'CD1',
+        'resname' => 'LEU',
+        'altloc' => 'A',
+        'resseq' => '18',
+        'charge' => '',
+        'occupancy' => '0.50',
+        'X' => '-24.795',
+        'Y' => '15.010',
+        'Z' => '15.993',
+        'tempfactor' => '10.41',
+        'icode' => '',
+        'element_symbol' => 'C',
+        'line_index' => 'NOT_DEFINED',
+        'orig_line' => 'ATOM    149  CD1ALEU A  18     -24.795  15.010  15.993  0.50 10.41           C',
+ };
 
+```
 ### Cut.pm
 This is the parent class of each Cut sub class
 Implements the following methods:
