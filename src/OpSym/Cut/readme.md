@@ -6,6 +6,7 @@ After implementing your Cutter or Filter do the following in ```pdbslicer.py```:
 * Change the ```help()``` function
 * Insert the name of the class in the global variable ```$cutters_classes```
 
+
 ## Cutters
 Cutters are classes which allow us to slice a protein data structure (model) into slices.
 For example: Use  the ```ByAmino``` cutter to insert model and to get a list (Cut) of its amino acids data structure.
@@ -60,12 +61,17 @@ We have already implemented the following cutters:
 	* ByRamachandran_with_side_chain_no_oxygen.pm
 
 ## Filters 
-TODO
+You can filter the results of a Cut after making the cut by running an object which implements Filter.pm methods.
 
 ### Filter.pm
 This is the parent class of each filter sub class
 Implements the following methods:
-TODO
+* dbg - print debug info
+* new - constructior 
+* get_status
+* pass_the_filter($list_of_items) - return 1 if list meets some conditions 
+* filter($lists_of_lists) returns the lists of items which pass_the filter.
+
  
 ### Implemented Filter
 We implemented the following classes of filters:
