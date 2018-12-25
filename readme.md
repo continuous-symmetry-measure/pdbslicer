@@ -3,7 +3,7 @@ PDB files contain information about protein structure. This software bisects the
 Several subunits are defined:
 1. Amino acid - includes all the atoms of a given residue
 2. Ramachandran subunit –for amino acid #i includes the atoms: C(i-1)-N(i)-CA(i)-C(i)-N(i+1)
-3. User defined subunit - with external atoms.txt file (see format below)
+3. User defined subunit - with an external atoms.txt file (see format below)
 4. Amino acid backbone – includes the atoms N-CA-C-O
 5. Ramachandran with side chain - for amino acid #i includes the atoms: C(i-1)-N(i)-CA(i)-C(i)-N(i+1), the backbone atoms and all the atoms of the side chain
 6. Ramachandran with side chain and without the backbone oxygen – similar to subunit 5, without the backbone oxygen
