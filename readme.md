@@ -1,6 +1,6 @@
 # pdbslicer
 PDB files contain information about protein structure. This software bisects the protein into subunits in order to analyze the properties of its fragments. 
-Several subunits are defined:
+The following type of subunits are defined:
 1. Amino acid - includes all the atoms of a given residue
 2. Ramachandran subunit –for amino acid #i includes the atoms: C(i-1)-N(i)-CA(i)-C(i)-N(i+1)
 3. User defined subunit - with an external atoms.txt file (see format below)
