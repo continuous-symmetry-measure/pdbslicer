@@ -80,7 +80,7 @@ Val:  N,CA,C,O,CB
 
 ```
 
-# output files
+# Ooutput Files
 The output is in the directory "out_{PDB_NAME}{timestring}"
 This directory contains:
 
@@ -88,8 +88,10 @@ This directory contains:
        * output files              - files names are indexed by serial-number + model + peptide-name
 
 
+# Known Issues
+This software does not support "alternate location". Please use our "pdb_prep" program.
 
-## create your own cut 
+# create your own cut 
 
 Data Structures:
 ```
